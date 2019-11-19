@@ -183,7 +183,7 @@ io.on('connection', function (socket) {
 
     // 클라이언트가 이름을 보내면 처리하는 이벤트 핸들러 => on()
     socket.on('s_send_userName',(user_id,user_name, time, room_num)=> {
-        console.log(user_name, time)
+        // console.log(user_name, time)
         // 1. 접속한 유저 정보를 소켓(클라이언트를 식별하는 객체)에 기록
         socket.user_id     = user_id
         socket.user_name   = user_name
@@ -204,11 +204,12 @@ io.on('connection', function (socket) {
         // 접속한 방의 정보 알아냄.
         var selectSql = "SELECT roomId, roomName, roomDate FROM chatroom WHERE roomId = ?"
         connection.query(selectSql, [room], function(err, result){
+            // firebase에서 데이터 찾아냄
             firebase.database().ref('/chatingRoom/'+result[0].roomId).once('value',function(data){
                 var roomId = data.val();
                 if(roomId == null){
                     // 방정보가 저장된 적 없을때 => 방정보랑 접속한 유저정보 같이 저장
-                    console.log(result[0].roomName);
+                    console.log(result[0].roomName); // 방이름
                     var chatRoom ={
                         chatRoomId : room,
                         chatRoomName : result[0].roomName,
@@ -225,26 +226,29 @@ io.on('connection', function (socket) {
                     // 방금 조인은 유저에게 반송
                     socket.emit('c_send_msg','관리자',`${socket.user_name}님 환영합니다.`, '')
                 }else{
-                    // 방의 정보가 있을 때 => 처음접속, 접속중, 접속한 적 있을 때
-                    // 방에 유저가 접속해있는지의 여부 확인함.
+                    // 방의 정보가 있을 때 => 처음접속(방에 chatRoomUser를 update), 접속중(메세지 보여줌), 접속한 적 있을 때(connect값을 true로 수정)
+                    // 방에 유저가 접속해있는지의 여부 확인함. (connect값 )
                     firebase.database().ref('/chatingRoom/'+room_num+'/chatRoomUser').once('value',function(data){
                         var userIdObj = data.val();  // 방에 접속중인 유저의 리스트
                         var userId = Object.keys(userIdObj); // 결과 값의 key값을 뽑아내기
                         console.log('접속중인 유저의 아이디 : '+userId);
-                        
+
+                        //  접속한 유저 수 만큼 반복
                         for(var i in userId){
-                            // 방안에 접속해 있는 유저 불러오기
+                            // 방안에 접속해 있는 유저 불러오기 (채팅방에- 들어왔을 때 새로고침이 되도록)
                             console.log('방안에'+i+'번 userId : '+userId[i]);
+                            
                             // 유저정보  불러옴
                             firebase.database().ref('/Users/'+userId[i]+'/chatingRoom/'+room_num).once('value',function(data){
                                 var value = data.val();
                                 console.log('value '+value.connect+'/'+value.user_nick);
-                                if(value.connect == true){
+                                if(value.connect == true){  // 접속해 있으면
                                     //socket.emit('c_send_member',userId[i],value.user_nick);
                                     socket.emit('c_send_updateMember',value.user_nick);
                                 }
                             })
-                            if(userId[i] == user_id){ // 접속한 적이 있다는 뜻
+                            // 파이어베이스 저장된 유저 아이디 == 접속한 유저 아이디 => 접속한 적이 있다는 뜻
+                            if(userId[i] == user_id){ 
                                 firebase.database().ref('/chatingRoom/'+room_num+'/chatRoomUser/'+userId[i]+'/connect').once('value',function(data){
                                     var connect = data.val();
                                     console.log(userId[i]+'의 connect값은 '+connect);
@@ -277,24 +281,30 @@ io.on('connection', function (socket) {
         function msg(room_num,userId){
             firebase.database().ref('/chatingRoom/'+room_num+'/messages').once('value',function(data){
                 var postKey = data.val();
-                var msgKey = Object.keys(postKey); // 결과 값의 key값을 뽑아내기
-                console.log(msgKey);
-                for(var i in msgKey){
-                    console.log('post키값'+ msgKey[i]);
+                if(postKey == null){
+                    console.log('메세지 키 값 : '+postKey+' / 메세지 없으므로 return');
+                    return;
+                }else{
+                    var msgKey = Object.keys(postKey); // 결과 값의 key값을 뽑아내기
+                    console.log(msgKey);
+                    for(var i in msgKey){
+                        console.log('post키값'+ msgKey[i]);
 
-                    firebase.database().ref('/chatingRoom/'+room_num+'/messages/'+msgKey[i]).once('value',function(data){
-                        var msgKeyValue = data.val();
-                        //console.log('message ㅣ '+msgKeyValue.message);
-                        console.log('msg값 : '+msgKeyValue.message+'/'+msgKeyValue.senddate+'/'+msgKeyValue.sender);
-                        var sender = msgKeyValue.senderNick;
-                        var msg = msgKeyValue.message;
-                        var sendDate = msgKeyValue.senddate;
+                        firebase.database().ref('/chatingRoom/'+room_num+'/messages/'+msgKey[i]).once('value',function(data){
+                            var msgKeyValue = data.val();
+                            //console.log('message ㅣ '+msgKeyValue.message);
+                            console.log('msg값 : '+msgKeyValue.message+'/'+msgKeyValue.senddate+'/'+msgKeyValue.sender);
+                            var sender = msgKeyValue.senderNick;
+                            var msg = msgKeyValue.message;
+                            var sendDate = msgKeyValue.senddate;
 
-                        socket.emit('c_send_msg', sender, msg, sendDate)
-                    })
+                            socket.emit('c_send_msg', sender, msg, sendDate)
+                        })
+                    }
                 }
             });
         }
+        
         var userInfo={
             connect : true,
             user_nick : user_name
@@ -303,6 +313,8 @@ io.on('connection', function (socket) {
         updates['/Users/'+ socket.user_id+'/chatingRoom/'+room_num] =userInfo;
         firebase.database().ref().update(updates);
     })
+
+
 
 
     // 디비에 값을 넣고 삭제하기 위해 회원의 아이디를 받아서 소켓에 저장해둠
@@ -333,6 +345,24 @@ io.on('connection', function (socket) {
         };
         var updates = {};
         updates['/chatingRoom/'+socket.room+'/messages/'+ newPostKey] = msg;
+        firebase.database().ref().update(updates);
+        
+    })
+    // 버튼으로 보내기 했을 때
+    socket.on('s_send_msg_btn', (room_id, user_id,user_nick, msg, time)=>{
+        // 이 방에 있는 모든 멤버들한테 방송
+        console.log('메세지를 보낸 사람', user_nick,' 방번호 ',room_id);
+        io.sockets.in( room_id ).emit('c_send_msg', user_nick, msg, time)
+
+        var newPostKey = firebase.database().ref().child('posts').push().key;
+        var msg = {
+            sender: user_id,
+            senderNick : user_nick,
+            message:msg,
+            senddate: new Date()
+        };
+        var updates = {};
+        updates['/chatingRoom/'+room_id+'/messages/'+ newPostKey] = msg;
         firebase.database().ref().update(updates);
         
     })
@@ -468,21 +498,11 @@ io.on('connection', function (socket) {
                 
                 var connectRoomList = new Array();
                 for(var i in keys){
-                    console.log('key값들 : '+ keys[i]);
-
+                    // console.log('key값들 : '+ keys[i]);
                     getRoom(user_id, keys[i], connectRoomList, keys.length);
 
                 }
-
-                // socket.emit('c_chating_room_list',connectRoomList);
-
-                // firebase.database().ref('/UsersRooms/'+user_id).once('value',function(data){
-                //     var roomId = data.val();
-                //     console.log('입장했던 roomId : ' + JSON.stringify(roomId));
-                //     //console.log('입장한 곳의 connect 값 : '+roomId+'/'+connect);
-                // });
             }
-
         });
     });
 
@@ -491,7 +511,7 @@ io.on('connection', function (socket) {
     async function getRoom(user_id, key, connectRoomList, len) {
         await firebase.database().ref('/Users/'+user_id+'/chatingRoom/'+key+'/connect').once('value',function(data){
             var connectResult = data.val();
-            console.log(key+'방의 connect값 : '+connectResult)
+            // console.log(key+'방의 connect값 : '+connectResult)
             if(connectResult === true){
                 // 접속중인 방들 
                 connectRoomList.push(key);
@@ -501,11 +521,11 @@ io.on('connection', function (socket) {
             if(count == len) {
                 console.log('접속중인 방의 리스트 : '+connectRoomList);
                 for(var i=0;i<connectRoomList.length;i++){
-                    console.log(connectRoomList[i]);
+                    // console.log(connectRoomList[i]);
                     var sql = "SELECT roomId, roomName FROM chatroom WHERE roomId = ?";
                     connection.query(sql, [connectRoomList[i]],function(err,rows){
                         if(err)console.log('방정보 불러오기 err : '+err);
-                        console.log("방정보 : "+rows);
+                        // console.log("방정보 : "+rows);
                         socket.emit('c_chating_room_list',rows);
                     });
                 }
