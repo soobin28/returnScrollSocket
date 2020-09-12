@@ -28,7 +28,7 @@
         "lodash.camelcase": "^4.3.0",
         "lodash.clone": "^4.5.0",
         "mysql": "^2.17.1",
-        "node-fetch": "^2.6.0",
+        "node-fetch": "^2.6.1",
         "protobufjs": "^6.8.8",
         "safer-buffer": "^2.1.2",
         "socket.io": "^2.2.0",
