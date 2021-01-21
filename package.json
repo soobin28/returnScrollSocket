@@ -31,7 +31,7 @@
         "node-fetch": "^2.6.0",
         "protobufjs": "^6.8.8",
         "safer-buffer": "^2.1.2",
-        "socket.io": "^2.2.0",
+        "socket.io": "^2.4.0",
         "tslib": "^1.10.0",
         "websocket-driver": "^0.7.3",
         "websocket-extensions": "^0.1.3",
